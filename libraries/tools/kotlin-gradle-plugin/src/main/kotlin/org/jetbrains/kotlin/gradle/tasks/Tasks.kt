@@ -53,6 +53,8 @@ import org.jetbrains.kotlin.gradle.plugin.statistics.KotlinBuildStatsService
 import org.jetbrains.kotlin.gradle.report.BuildMetricsReporterService
 import org.jetbrains.kotlin.gradle.report.ReportingSettings
 import org.jetbrains.kotlin.gradle.targets.js.ir.isProduceUnzippedKlib
+import org.jetbrains.kotlin.gradle.tasks.internal.JAR_SNAPSHOT_ARTIFACT_TYPE
+import org.jetbrains.kotlin.gradle.tasks.internal.JavaTransform
 import org.jetbrains.kotlin.gradle.utils.*
 import org.jetbrains.kotlin.incremental.ChangedFiles
 import org.jetbrains.kotlin.incremental.ClasspathChanges
@@ -509,6 +511,9 @@ abstract class KotlinCompile @Inject constructor(
             private const val DIRECTORY_ARTIFACT_TYPE = "directory"
             private const val JAR_ARTIFACT_TYPE = "jar"
             const val CLASSPATH_ENTRY_SNAPSHOT_ARTIFACT_TYPE = "classpath-entry-snapshot"
+            //transformation for java jar
+            //transformation for module jar. It should exist
+            private const val ABI_SNAPSHOT_ARTIFACT_TYPE = "snapshot"
         }
 
         /**
@@ -522,6 +527,15 @@ abstract class KotlinCompile @Inject constructor(
                 project.configurations.create(classpathSnapshotConfigurationName(taskProvider.name)).apply {
                     project.dependencies.add(name, project.files(project.provider { taskProvider.get().classpath }))
                 }
+            }
+
+            if (properties.useAbiSnapshot && !project.extensions.extraProperties.has(TRANSFORMS_REGISTERED)) {
+                project.extensions.extraProperties[TRANSFORMS_REGISTERED] = true
+                project.dependencies.registerTransform(JavaTransform::class.java) {
+                    it.from.attribute(ARTIFACT_TYPE_ATTRIBUTE, JAR_ARTIFACT_TYPE)
+                    it.to.attribute(ARTIFACT_TYPE_ATTRIBUTE, JAR_SNAPSHOT_ARTIFACT_TYPE)
+                }
+
             }
         }
 
@@ -570,6 +584,21 @@ abstract class KotlinCompile @Inject constructor(
                 task.kotlinOptions.moduleName ?: task.parentKotlinOptionsImpl.orNull?.moduleName ?: compilation.moduleName
             })
 
+            if (properties.useAbiSnapshot) {
+                task.project.configurations.maybeCreate("${task.name}_configuration").also {
+                    task.project.dependencies.add(it.name, task.project.files(task.project.provider { task.classpath }))
+                    task.project.dependencies.registerTransform(JavaTransform::class.java) {
+                        it.from.attribute(ARTIFACT_TYPE_ATTRIBUTE, JAR_ARTIFACT_TYPE)
+                        it.to.attribute(ARTIFACT_TYPE_ATTRIBUTE, JAR_SNAPSHOT_ARTIFACT_TYPE)
+                    }
+                    task.jarSnapshots.from(it.incoming.artifactView { viewConfig ->
+                            viewConfig.attributes.attribute(ARTIFACT_TYPE_ATTRIBUTE, JAR_SNAPSHOT_ARTIFACT_TYPE)
+                        }.files
+                    )
+//                    task.jarSnapshots.from(task.project.provider { task.classpath })
+                }
+
+            }
             if (properties.useClasspathSnapshot) {
                 val classpathSnapshot = task.project.configurations.getByName(classpathSnapshotConfigurationName(task.name))
                 task.classpathSnapshotProperties.classpathSnapshot.from(
@@ -617,6 +646,9 @@ abstract class KotlinCompile @Inject constructor(
     override fun getClasspath(): FileCollection {
         return super.getClasspath()
     }
+
+    @get:Internal
+    abstract val jarSnapshots: ConfigurableFileCollection
 
     @get:Nested
     abstract val classpathSnapshotProperties: ClasspathSnapshotProperties
@@ -714,7 +746,7 @@ abstract class KotlinCompile @Inject constructor(
     }
 
     override val incrementalProps: List<FileCollection>
-        get() = listOf(stableSources, commonSourceSet, classpathSnapshotProperties.classpath, classpathSnapshotProperties.classpathSnapshot)
+        get() = listOf(stableSources, commonSourceSet, classpathSnapshotProperties.classpath, classpathSnapshotProperties.classpathSnapshot, jarSnapshots)
 
     override fun getSourceRoots(): SourceRoots.ForJvm = jvmSourceRoots
 
