@@ -10,11 +10,11 @@ package kotlin
  * On the JVM, non-nullable values of this type are represented as values of the primitive type `char`.
  */
 public value class Char
-@SinceKotlin("1.5")
-@WasExperimental(ExperimentalStdlibApi::class)
 @kotlin.internal.LowPriorityInOverloadResolution
 private constructor(private val value: Int) : Comparable<Char> {
 
+    @SinceKotlin("1.5")
+    @WasExperimental(ExperimentalStdlibApi::class)
     constructor(code: UShort) : this(code.toInt())
 
     /**
