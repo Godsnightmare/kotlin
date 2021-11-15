@@ -19,7 +19,7 @@ import java.util.zip.ZipInputStream
 const val JAR_SNAPSHOT_ARTIFACT_TYPE = "jar-snapshot"
 
 @CacheableTransform
-abstract class JavaTransform : TransformAction<TransformParameters.None> {
+abstract class JarToJarSnapshotTransform : TransformAction<TransformParameters.None> {
 
     companion object {
         fun storeLookups(jarFile: File): List<SimpleLookupInfo> {
@@ -35,7 +35,7 @@ abstract class JavaTransform : TransformAction<TransformParameters.None> {
                     )
                 )
                 lookups.addAll(node.methods
-                                   .filter { it.access == Opcodes.ACC_PUBLIC }
+                                   .filter { (it.access and Opcodes.ACC_PUBLIC) == 1 }
                                    .map { method ->
                                        SimpleLookupInfo(
                                            classReader.key,
@@ -45,7 +45,7 @@ abstract class JavaTransform : TransformAction<TransformParameters.None> {
                                    }
                 )
                 lookups.addAll(node.fields
-                                   .filter { it.access == Opcodes.ACC_PUBLIC }
+                                   .filter { (it.access and Opcodes.ACC_PUBLIC) == 1 }
                                    .map { method ->
                                        SimpleLookupInfo(
                                            classReader.key,
@@ -106,7 +106,7 @@ abstract class JavaTransform : TransformAction<TransformParameters.None> {
         val jarFile = inputArtifact.get().asFile
 
         val lookups = storeLookups(jarFile)
-        val lookupCacheDir = outputs.file(jarFile.name.replace('.', '_') + "-files")
+        val lookupCacheDir = outputs.file(jarFile.name.replace('.', '_') + ".jar-snapshot")
 
         lookupCacheDir.writeText("${jarFile.path} \n")
         lookupCacheDir.writeText("${lookups.size} \n")

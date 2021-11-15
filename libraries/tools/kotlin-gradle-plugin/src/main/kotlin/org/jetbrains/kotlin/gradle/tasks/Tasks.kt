@@ -54,7 +54,7 @@ import org.jetbrains.kotlin.gradle.report.BuildMetricsReporterService
 import org.jetbrains.kotlin.gradle.report.ReportingSettings
 import org.jetbrains.kotlin.gradle.targets.js.ir.isProduceUnzippedKlib
 import org.jetbrains.kotlin.gradle.tasks.internal.JAR_SNAPSHOT_ARTIFACT_TYPE
-import org.jetbrains.kotlin.gradle.tasks.internal.JavaTransform
+import org.jetbrains.kotlin.gradle.tasks.internal.JarToJarSnapshotTransform
 import org.jetbrains.kotlin.gradle.utils.*
 import org.jetbrains.kotlin.incremental.ChangedFiles
 import org.jetbrains.kotlin.incremental.ClasspathChanges
@@ -529,12 +529,8 @@ abstract class KotlinCompile @Inject constructor(
                 }
             }
 
-            if (properties.useAbiSnapshot && !project.extensions.extraProperties.has(TRANSFORMS_REGISTERED)) {
-                project.extensions.extraProperties[TRANSFORMS_REGISTERED] = true
-                project.dependencies.registerTransform(JavaTransform::class.java) {
-                    it.from.attribute(ARTIFACT_TYPE_ATTRIBUTE, JAR_ARTIFACT_TYPE)
-                    it.to.attribute(ARTIFACT_TYPE_ATTRIBUTE, JAR_SNAPSHOT_ARTIFACT_TYPE)
-                }
+            if (properties.useAbiSnapshot) {
+                project.configurations.maybeCreate("kotlin_${taskProvider.name}_configuration")
 
             }
         }
@@ -585,9 +581,10 @@ abstract class KotlinCompile @Inject constructor(
             })
 
             if (properties.useAbiSnapshot) {
-                task.project.configurations.maybeCreate("${task.name}_configuration").also {
-                    task.project.dependencies.add(it.name, task.project.files(task.project.provider { task.classpath }))
-                    task.project.dependencies.registerTransform(JavaTransform::class.java) {
+
+                task.project.configurations.getByName("kotlin_${task.name}_configuration").also {
+                    it.extendsFrom(task.project.configurations.getByName("compileClasspath"))
+                    task.project.dependencies.registerTransform(JarToJarSnapshotTransform::class.java) {
                         it.from.attribute(ARTIFACT_TYPE_ATTRIBUTE, JAR_ARTIFACT_TYPE)
                         it.to.attribute(ARTIFACT_TYPE_ATTRIBUTE, JAR_SNAPSHOT_ARTIFACT_TYPE)
                     }
@@ -647,7 +644,9 @@ abstract class KotlinCompile @Inject constructor(
         return super.getClasspath()
     }
 
-    @get:Internal
+    @get:Classpath
+    @get:Optional
+    @get:Incremental
     abstract val jarSnapshots: ConfigurableFileCollection
 
     @get:Nested
