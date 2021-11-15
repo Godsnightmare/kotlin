@@ -14,17 +14,28 @@
 #include "Porting.h"
 #include "TestSupport.hpp"
 
+#include <iostream>
+
 using namespace kotlin;
 
 namespace {
 
-NO_INLINE KStdVector<void*> GetStackTrace1(int skipFrames) {
-    return GetCurrentStackTrace(skipFrames);
+template <size_t Capacity = kotlin::kDynamicCapacity>
+NO_INLINE StackTrace<Capacity> GetStackTrace1(int skipFrames = 0) {
+    return StackTrace<Capacity>::current(skipFrames);
 }
 
-NO_INLINE KStdVector<void*> GetStackTrace2(int skipFrames) {
-    return GetStackTrace1(skipFrames);
+template <size_t Capacity = kotlin::kDynamicCapacity>
+NO_INLINE StackTrace<Capacity> GetStackTrace2(int skipFrames = 0) {
+    return GetStackTrace1<Capacity>(skipFrames);
 }
+
+template <size_t Capacity = kotlin::kDynamicCapacity>
+NO_INLINE StackTrace<Capacity> GetStackTrace3(int skipFrames = 0) {
+    return GetStackTrace2<Capacity>(skipFrames);
+}
+
+// TODO: Deep stacktrace.
 
 NO_INLINE void AbortWithStackTrace(int) {
     PrintStackTraceStderr();
@@ -34,30 +45,49 @@ NO_INLINE void AbortWithStackTrace(int) {
 } // namespace
 
 TEST(StackTraceTest, StackTrace) {
-    // TODO: Consider incorporating extra skipping to `GetCurrentStackTrace` on windows.
-#if KONAN_WINDOWS
-    constexpr int kSkip = 1;
-#else
-    constexpr int kSkip = 0;
-#endif
-    auto stackTrace = GetStackTrace2(kSkip);
-    auto symbolicStackTrace = GetStackTraceStrings(stackTrace.data(), stackTrace.size());
+    auto stackTrace = GetStackTrace3();
+    auto symbolicStackTrace = GetStackTraceStrings(stackTrace.data());
     ASSERT_GT(symbolicStackTrace.size(), 0ul);
     EXPECT_THAT(symbolicStackTrace[0], testing::HasSubstr("GetStackTrace1"));
+    EXPECT_THAT(symbolicStackTrace[1], testing::HasSubstr("GetStackTrace2"));
 }
 
 TEST(StackTraceTest, StackTraceWithSkip) {
-    // TODO: Consider incorporating extra skipping to `GetCurrentStackTrace` on windows.
-#if KONAN_WINDOWS
-    constexpr int kSkip = 2;
-#else
     constexpr int kSkip = 1;
-#endif
-    auto stackTrace = GetStackTrace2(kSkip);
-    auto symbolicStackTrace = GetStackTraceStrings(stackTrace.data(), stackTrace.size());
+    auto stackTrace = GetStackTrace3(kSkip);
+    auto symbolicStackTrace = GetStackTraceStrings(stackTrace.data());
     ASSERT_GT(symbolicStackTrace.size(), 0ul);
     EXPECT_THAT(symbolicStackTrace[0], testing::HasSubstr("GetStackTrace2"));
+    EXPECT_THAT(symbolicStackTrace[1], testing::HasSubstr("GetStackTrace3"));
 }
+
+TEST(StackTraceTest, StackAllocatedTrace) {
+    auto stackTrace = GetStackTrace3<2>();
+    auto symbolicStackTrace = GetStackTraceStrings(stackTrace.data());
+    ASSERT_EQ(symbolicStackTrace.size(), 2ul);
+    EXPECT_THAT(symbolicStackTrace[0], testing::HasSubstr("GetStackTrace1"));
+    EXPECT_THAT(symbolicStackTrace[1], testing::HasSubstr("GetStackTrace2"));
+}
+
+TEST(StackTraceTest, StackAllocatedTraceWithSkip) {
+    constexpr int kSkip = 1;
+    auto stackTrace = GetStackTrace3<2>(kSkip);
+    auto symbolicStackTrace = GetStackTraceStrings(stackTrace.data());
+    ASSERT_EQ(symbolicStackTrace.size(), 2ul);
+    EXPECT_THAT(symbolicStackTrace[0], testing::HasSubstr("GetStackTrace2"));
+    EXPECT_THAT(symbolicStackTrace[1], testing::HasSubstr("GetStackTrace3"));
+}
+
+/*
+ *
+ * TODO:
+ *  - Empty trace
+ *  - Empty trace + stack allocation.
+ *  - Deep trace
+ *
+ *
+ */
+
 
 TEST(StackTraceDeathTest, PrintStackTrace) {
     EXPECT_DEATH(
