@@ -208,7 +208,7 @@ open class FirSupertypeResolverVisitor(
     private val scopeForLocalClass: PersistentList<FirScope>? = null,
     private val localClassesNavigationInfo: LocalClassesNavigationInfo? = null,
     private val firProviderInterceptor: FirProviderInterceptor? = null,
-    private val useSiteFile: FirFile? = null,
+    private var useSiteFile: FirFile? = null,
     containingDeclarations: List<FirDeclaration> = emptyList(),
 ) : FirDefaultVisitor<Unit, Any?>() {
     private val supertypeGenerationExtensions = session.extensionService.supertypeGenerators
@@ -219,6 +219,16 @@ open class FirSupertypeResolverVisitor(
             if (it is FirRegularClass) {
                 classDeclarationsStack.add(it)
             }
+        }
+    }
+
+    private inline fun <R> withFile(file: FirFile, block: () -> R): R {
+        val oldFile = useSiteFile
+        try {
+            useSiteFile = file
+            return block()
+        } finally {
+            useSiteFile = oldFile
         }
     }
 
@@ -434,7 +444,9 @@ open class FirSupertypeResolverVisitor(
     }
 
     override fun visitFile(file: FirFile, data: Any?) {
-        visitDeclarationContent(file, null)
+        withFile(file) {
+            visitDeclarationContent(file, null)
+        }
     }
 }
 
